@@ -27,7 +27,7 @@ AM_LDFLAGS = -Wl,-rpath-link,../libelf:../libdw
 
 bin_PROGRAMS = readelf nm size strip elflint findtextrel addr2line \
 	       elfcmp objdump ranlib strings ar unstrip stack elfcompress \
-	       elfclassify
+	       elfclassify postmortem
 
 noinst_LIBRARIES = libar.a
 
@@ -83,6 +83,7 @@ strings_LDADD = $(libelf) $(libeu) $(argp_LDADD)
 ar_LDADD = libar.a $(libelf) $(libeu) $(argp_LDADD) $(obstack_LIBS)
 unstrip_LDADD = $(libebl) $(libelf) $(libdw) $(libeu) $(argp_LDADD)
 stack_LDADD = $(libebl) $(libelf) $(libdw) $(libeu) $(argp_LDADD) $(demanglelib)
+postmortem_LDADD = $(libebl) $(libelf) $(libdw) $(libeu) $(argp_LDADD) $(demanglelib)
 elfcompress_LDADD = $(libebl) $(libelf) $(libdw) $(libeu) $(argp_LDADD)
 elfclassify_LDADD = $(libelf) $(libdw) $(libeu) $(argp_LDADD)
 

@@ -704,6 +704,11 @@ bool dwfl_attach_state (Dwfl *dwfl, Elf *elf, pid_t pid,
 			void *dwfl_arg)
   __nonnull_attribute__ (1, 4);
 
+/* Calls dwfl_crash_state with Dwfl_Thread_Callbacks setup for extracting
+   thread state from a crashing program.  Returns the pid number extracted
+   from the core file, or -1 for errors.  */
+extern int dwfl_crash_file_attach (Dwfl *dwfl, Elf *elf);
+
 /* Calls dwfl_attach_state with Dwfl_Thread_Callbacks setup for extracting
    thread state from the ELF core file.  Returns the pid number extracted
    from the core file, or -1 for errors.  */

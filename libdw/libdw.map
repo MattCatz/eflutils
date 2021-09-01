@@ -359,4 +359,5 @@ ELFUTILS_0.177 {
     # same implementation, but users of the new symbol version can
     # presume that NULL is only returned on error (otherwise ELF_K_NONE).
     dwelf_elf_begin;
+    dwfl_crash_file_attach;
 } ELFUTILS_0.175;
