@@ -1,4 +1,5 @@
 /* Unwinding of frames like gstack/pstack.
+   Copyright (C) 2021 Matthew Cather
    Copyright (C) 2013-2014 Red Hat, Inc.
    This file is part of elfutils.
 
@@ -53,6 +54,7 @@ static bool show_debugname = false;
 static bool show_inlines = false;
 
 static int maxframes = 256;
+static int core_read_size = 0x1000000;
 
 struct frame
 {
@@ -486,14 +488,6 @@ parse_opt (int key, char *arg __attribute__ ((unused)),
       show_module = true;
       break;
 
-    case 'a':
-      show_activation = true;
-      break;
-
-    case 'd':
-      show_debugname = true;
-      break;
-
     case 'i':
       show_inlines = show_debugname = true;
       break;
@@ -511,14 +505,6 @@ parse_opt (int key, char *arg __attribute__ ((unused)),
       show_quiet = true;
       break;
 
-    case 'r':
-      show_raw = true;
-      break;
-
-    case '1':
-      show_one_tid = true;
-      break;
-
     case 'n':
       maxframes = atoi (arg);
       if (maxframes < 0)
@@ -532,14 +518,22 @@ parse_opt (int key, char *arg __attribute__ ((unused)),
       show_modules = true;
       break;
 
+    case 'r':
+      core_read_size = atoi (arg);
+      if (core_read_size < 0)
+        {
+          argp_error (state, N_ ("-n MAX_READ should be 0 or higher."));
+          return EINVAL;
+        }
+
     case ARGP_KEY_END:
 
       if (core == NULL) {
-          core_storage = malloc(0x1000000u);
+          core_storage = malloc(core_read_size);
           if (core_storage == NULL)
             error (EXIT_BAD, errno, "malloc core_storage");
 
-          size_t length = fread(core_storage, 1, 0x1000000u, stdin);
+          size_t length = fread(core_storage, 1, core_read_size, stdin);
           elf_version (EV_CURRENT);
           core = elf_memory (core_storage, length);
           if (core == NULL)
@@ -549,16 +543,15 @@ parse_opt (int key, char *arg __attribute__ ((unused)),
       dwfl = dwfl_begin (&crash_callbacks);
       if (dwfl == NULL)
         error (EXIT_BAD, 0, "dwfl_begin: %s", dwfl_errmsg (-1));
+
       if (dwfl_core_file_report (dwfl, core, exec) < 0)
         error (EXIT_BAD, 0, "dwfl_core_file_report: %s", dwfl_errmsg (-1));
 
       if (dwfl_report_end (dwfl, NULL, NULL) != 0)
         error (EXIT_BAD, 0, "dwfl_report_end: %s", dwfl_errmsg (-1));
 
-      if (dwfl_crash_file_attach (dwfl, core) < 0) {
-        // printf("\n%d\n", dwfl_errno());
+      if (dwfl_crash_file_attach (dwfl, core) < 0) 
         error (EXIT_BAD, 0, "dwfl_crash_file_attach: %s", dwfl_errmsg (-1));
-      }
 
 
       /* Makes sure we are properly attached.  */
@@ -585,20 +578,21 @@ main (int argc, char **argv)
 
   const struct argp_option options[] = {
     { NULL, 0, NULL, 0, N_ ("Input selection options:"), 0 },
-    { "core", OPT_COREFILE, "COREFILE", 0, N_ ("Show stack found in COREFILE"), 0 },
-    { "debuginfo-path", OPT_DEBUGINFO, "PATH", 0, N_ ("Search path for separate debuginfo files"), 0 },
+    { "core", OPT_COREFILE, "COREFILE", 0, N_ ("Use registers in COREFILE to start the backtrace"), 0 },
+    // { "debuginfo-path", OPT_DEBUGINFO, "PATH", 0, N_ ("Search path for separate debuginfo files"), 0 },
     { NULL, 0, NULL, 0, N_ ("Output selection options:"), 0 },
-    { "activation", 'a', NULL, 0, N_ ("Additionally show frame activation"), 0 },
-    { "debugname", 'd', NULL, 0, N_ ("Additionally try to lookup DWARF debuginfo name for frame address"), 0 },
+    // { "activation", 'a', NULL, 0, N_ ("Additionally show frame activation"), 0 },
+    // { "debugname", 'd', NULL, 0, N_ ("Additionally try to lookup DWARF debuginfo name for frame address"), 0 },
     { "inlines", 'i', NULL, 0, N_ ("Additionally show inlined function frames using DWARF debuginfo if available (implies -d)"), 0 },
     { "module", 'm', NULL, 0, N_ ("Additionally show module file information"), 0 },
     { "verbose", 'v', NULL, 0, N_ ("Show all additional information (activation, debugname, inlines, module and source)"), 0 },
     { "quiet", 'q', NULL, 0, N_ ("Do not resolve address to function symbol name"), 0 },
-    { "raw", 'r', NULL, 0, N_ ("Show raw function symbol names, do not try to demangle names"), 0 },
+    // { "raw", 'r', NULL, 0, N_ ("Show raw function symbol names, do not try to demangle names"), 0 },
     { "build-id", 'b', NULL, 0, N_ ("Show module build-id, load address and pc offset"), 0 },
-    { NULL, '1', NULL, 0, N_ ("Show the backtrace of only one thread"), 0 },
+    // { NULL, '1', NULL, 0, N_ ("Show the backtrace of only one thread"), 0 },
     { NULL, 'n', "MAXFRAMES", 0, N_ ("Show at most MAXFRAMES per thread (default 256, use 0 for unlimited)"), 0 },
     { "list-modules", 'l', NULL, 0, N_ ("Show module memory map with build-id, elf and debug files detected"), 0 },
+    { NULL, 'r', "MAX_READ", 0, N_ ("Read at most MAX_READ bytes from COREFILE (default 0x1000000, use 0 for unlimited)"), 0 },
     { NULL, 0, NULL, 0, NULL, 0 }
   };
 
@@ -606,13 +600,13 @@ main (int argc, char **argv)
       = { .options = options,
           .parser = parse_opt,
           .doc
-          = N_ ("Print a stack for each thread in a process or core file.\n\n\
-                Program exits with return code 0 if all frames were shown without \
-                any errors.  If some frames were shown, but there were some non-fatal \
-                errors, possibly causing an incomplete backtrace, the program exits \
-                with return code 1.  If no frames could be shown, or a fatal error \
-                occurred the program exits with return code 2.  If the program was \
-                invoked with bad or missing arguments it will exit with return code 64.") };
+          = N_ ("Read in a core file and print a stack for each thread in that process.\n\n\
+Program exits with return code 0 if all frames were shown without \
+any errors.  If some frames were shown, but there were some non-fatal \
+errors, possibly causing an incomplete backtrace, the program exits \
+with return code 1.  If no frames could be shown, or a fatal error \
+occurred the program exits with return code 2.  If the program was \
+invoked with bad or missing arguments it will exit with return code 64.") };
 
   argp_parse (&argp, argc, argv, 0, NULL, NULL);
 

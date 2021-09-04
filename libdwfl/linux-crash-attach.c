@@ -42,8 +42,6 @@
 #include <sys/syscall.h>
 #include <sys/wait.h>
 
-#endif
-
 struct crash_arg
 {
   Elf *crash;
@@ -135,7 +133,6 @@ crash_next_thread (Dwfl *dwfl __attribute__ ((unused)), void *dwfl_arg,
 static bool
 crash_memory_read (Dwfl *dwfl, Dwarf_Addr addr, Dwarf_Word *result, void *arg)
 {
-  // struct __libdwfl_pid_arg *pid_arg = arg;
   Dwfl_Process *process = dwfl->process;
   struct crash_arg *crash_arg = arg;
   pid_t tid = process->pid;
@@ -146,9 +143,9 @@ crash_memory_read (Dwfl *dwfl, Dwarf_Addr addr, Dwarf_Word *result, void *arg)
 #endif
 
   if ((addr & ((Dwarf_Addr)__LIBDWFL_REMOTE_MEM_CACHE_SIZE - 1))
-    > (Dwarf_Addr)__LIBDWFL_REMOTE_MEM_CACHE_SIZE - sizeof (unsigned long)) {
-      assert (0);
-    }
+    > (Dwarf_Addr)__LIBDWFL_REMOTE_MEM_CACHE_SIZE - sizeof (unsigned long))
+      abort (); // not sure how to hanndle memory split between two reads right now....
+
 
   struct __libdwfl_remote_mem_cache *mem_cache = crash_arg->mem_cache;
   if (mem_cache == NULL)
@@ -196,11 +193,9 @@ crash_memory_read (Dwfl *dwfl, Dwarf_Addr addr, Dwarf_Word *result, void *arg)
   else
     memcpy (result, d, sizeof (unsigned long));
   
-#if SIZEOF_LONG == 8
-# if BYTE_ORDER == BIG_ENDIAN
-      if (ebl_get_elfclass (process->ebl) == ELFCLASS32)
-	*result >>= 32;
-# endif
+#if SIZEOF_LONG == 8 && BYTE_ORDER == BIG_ENDIAN 
+  if (ebl_get_elfclass (process->ebl) == ELFCLASS32)
+    *result >>= 32;
 #endif
   return true;
 }
@@ -363,30 +358,30 @@ dwfl_crash_file_attach (Dwfl *dwfl, Elf *crash)
   if (ebl == NULL)
     {
       err = DWFL_E_LIBEBL;
-      printf("%s %d\n", __FUNCTION__, err);goto fail_err;
+      goto fail_err;
     }
   size_t nregs = ebl_frame_nregs (ebl);
   if (nregs == 0)
     {
       err = DWFL_E_NO_UNWIND;
-      printf("%s %d\n", __FUNCTION__, err);goto fail;
+      goto fail;
     }
   GElf_Ehdr ehdr_mem, *ehdr = gelf_getehdr (crash, &ehdr_mem);
   if (ehdr == NULL)
     {
       err = DWFL_E_LIBELF;
-      printf("%s %d\n", __FUNCTION__, err);goto fail;
+      goto fail;
     }
   if (ehdr->e_type != ET_CORE)
     {
       err = DWFL_E_NO_CORE_FILE;
-      printf("%s %d\n", __FUNCTION__, err);goto fail;
+      goto fail;
     }
   size_t phnum;
   if (elf_getphdrnum (crash, &phnum) < 0)
     {
       err = DWFL_E_LIBELF;
-      printf("%s %d\n", __FUNCTION__, err);goto fail;
+      goto fail;
     }
   pid_t pid = -1;
   Elf_Data *note_data = NULL;
@@ -404,7 +399,7 @@ dwfl_crash_file_attach (Dwfl *dwfl, Elf *crash)
   if (note_data == NULL)
     {
       err = DWFL_E_LIBELF;
-      printf("%s %d\n", __FUNCTION__, err);goto fail;
+      goto fail;
     }
   size_t offset = 0;
   GElf_Nhdr nhdr;
@@ -447,13 +442,13 @@ dwfl_crash_file_attach (Dwfl *dwfl, Elf *crash)
     {
       /* No valid NT_PRPSINFO recognized in this CORE.  */
       err = DWFL_E_BADELF;
-      printf("%s %d\n", __FUNCTION__, err);goto fail;
+      goto fail;
     }
   struct crash_arg *crash_arg = malloc (sizeof *crash_arg);
   if (crash_arg == NULL)
     {
       err = DWFL_E_NOMEM;
-      printf("%s %d\n", __FUNCTION__, err);goto fail;
+      goto fail;
     }
   crash_arg->crash = crash;
   crash_arg->note_data = note_data;
@@ -481,3 +476,13 @@ dwfl_crash_file_attach (Dwfl *dwfl, Elf *crash)
     return -1;
 }
 INTDEF (dwfl_crash_file_attach)
+
+#else	/* __linux__ */
+
+int
+dwfl_crash_file_attach (Dwfl *dwfl __attribute__ ((unused)), Elf *crash __attribute__ ((unused)))
+  return ENOSYS;
+}
+INTDEF (dwfl_crash_file_attach)
+
+#endif /* ! __linux__ */
